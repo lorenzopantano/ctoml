@@ -1,0 +1,10 @@
+clients = ["client1", "client2"]
+servers = { ip = "127.0.0.1", port = 8080 }
+
+[[users]]
+name = "bob"
+age = 42
+
+[[users]]
+name = "alice"
+dogs = ["Fido", "Daisy"]

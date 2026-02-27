@@ -1,0 +1,6 @@
+# Full line comment
+a = 1  # Inline
+b = """
+multiline
+# comment inside
+"""

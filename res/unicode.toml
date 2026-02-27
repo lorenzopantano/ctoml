@@ -1,0 +1,4 @@
+name = "café"
+japanese = "東京"
+# BOM test (invalid, but common)
+﻿owners = ["Björn", "Tom"]

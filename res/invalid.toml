@@ -1,0 +1,3 @@
+bad_utf8 = "café\xFFinvalid"  # Invalid UTF-8
+no_equal "key"              # Missing =
+duplicate = { a = 1, a = 2 }  # Duplicate key

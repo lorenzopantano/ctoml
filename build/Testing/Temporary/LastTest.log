@@ -1,0 +1,93 @@
+Start testing: Feb 27 22:25 CET
+----------------------------------------------------------
+1/1 Testing: basic_first_test
+1/1 Test: basic_first_test
+Command: "/Users/lorenzopantano/Developer/lowlevel/ctoml/build/tests/test_ctoml"
+Directory: /Users/lorenzopantano/Developer/lowlevel/ctoml/build/tests
+"basic_first_test" start time: Feb 27 22:25 CET
+Output:
+----------------------------------------------------------
+Lexer src:
+[[test]][
+version = "1.0"
+"user" = 22;
+
+[user]
+"username" = "lorenzo"
+
+[DOUBLE_LBRACKET ] line=1   col=3   len=2   lit="[["
+[INVALID         ] line=1   col=4   len=1   lit="t"
+[INVALID         ] line=1   col=5   len=1   lit="e"
+[INVALID         ] line=1   col=6   len=1   lit="s"
+[INVALID         ] line=1   col=7   len=1   lit="t"
+[DOUBLE_RBRACKET ] line=1   col=9   len=2   lit="]]"
+[LBRACKET        ] line=1   col=10  len=1   lit="["
+[NEWLINE         ] line=2   col=1   len=1   lit="
+"
+[INVALID         ] line=2   col=2   len=1   lit="v"
+[INVALID         ] line=2   col=3   len=1   lit="e"
+[INVALID         ] line=2   col=4   len=1   lit="r"
+[INVALID         ] line=2   col=5   len=1   lit="s"
+[INVALID         ] line=2   col=6   len=1   lit="i"
+[INVALID         ] line=2   col=7   len=1   lit="o"
+[INVALID         ] line=2   col=8   len=1   lit="n"
+[EQUALS          ] line=2   col=10  len=1   lit="="
+[INVALID         ] line=2   col=12  len=1   lit="""
+[INVALID         ] line=2   col=13  len=1   lit="1"
+[DOT             ] line=2   col=14  len=1   lit="."
+[INVALID         ] line=2   col=15  len=1   lit="0"
+[INVALID         ] line=2   col=16  len=1   lit="""
+[NEWLINE         ] line=3   col=1   len=1   lit="
+"
+[INVALID         ] line=3   col=2   len=1   lit="""
+[INVALID         ] line=3   col=3   len=1   lit="u"
+[INVALID         ] line=3   col=4   len=1   lit="s"
+[INVALID         ] line=3   col=5   len=1   lit="e"
+[INVALID         ] line=3   col=6   len=1   lit="r"
+[INVALID         ] line=3   col=7   len=1   lit="""
+[EQUALS          ] line=3   col=9   len=1   lit="="
+[INVALID         ] line=3   col=11  len=1   lit="2"
+[INVALID         ] line=3   col=12  len=1   lit="2"
+[INVALID         ] line=3   col=13  len=1   lit=";"
+[NEWLINE         ] line=4   col=1   len=1   lit="
+"
+[NEWLINE         ] line=5   col=1   len=1   lit="
+"
+[LBRACKET        ] line=5   col=2   len=1   lit="["
+[INVALID         ] line=5   col=3   len=1   lit="u"
+[INVALID         ] line=5   col=4   len=1   lit="s"
+[INVALID         ] line=5   col=5   len=1   lit="e"
+[INVALID         ] line=5   col=6   len=1   lit="r"
+[RBRACKET        ] line=5   col=7   len=1   lit="]"
+[NEWLINE         ] line=6   col=1   len=1   lit="
+"
+[INVALID         ] line=6   col=2   len=1   lit="""
+[INVALID         ] line=6   col=3   len=1   lit="u"
+[INVALID         ] line=6   col=4   len=1   lit="s"
+[INVALID         ] line=6   col=5   len=1   lit="e"
+[INVALID         ] line=6   col=6   len=1   lit="r"
+[INVALID         ] line=6   col=7   len=1   lit="n"
+[INVALID         ] line=6   col=8   len=1   lit="a"
+[INVALID         ] line=6   col=9   len=1   lit="m"
+[INVALID         ] line=6   col=10  len=1   lit="e"
+[INVALID         ] line=6   col=11  len=1   lit="""
+[EQUALS          ] line=6   col=13  len=1   lit="="
+[INVALID         ] line=6   col=15  len=1   lit="""
+[INVALID         ] line=6   col=16  len=1   lit="l"
+[INVALID         ] line=6   col=17  len=1   lit="o"
+[INVALID         ] line=6   col=18  len=1   lit="r"
+[INVALID         ] line=6   col=19  len=1   lit="e"
+[INVALID         ] line=6   col=20  len=1   lit="n"
+[INVALID         ] line=6   col=21  len=1   lit="z"
+[INVALID         ] line=6   col=22  len=1   lit="o"
+[INVALID         ] line=6   col=23  len=1   lit="""
+[EOF             ] line=6   col=23  len=0   lit=""
+<end of output>
+Test time =   0.36 sec
+----------------------------------------------------------
+Test Passed.
+"basic_first_test" end time: Feb 27 22:25 CET
+"basic_first_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Feb 27 22:25 CET

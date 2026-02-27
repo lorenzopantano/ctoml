@@ -1,0 +1,2 @@
+/usr/bin/ar qc libctoml.a CMakeFiles/ctoml.dir/src/file.c.o CMakeFiles/ctoml.dir/src/lexer.c.o
+/usr/bin/ranlib libctoml.a
