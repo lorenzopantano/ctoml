@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/Users/lorenzopantano/Developer/lowlevel/ctoml/build/cmake_install.cmake",
-		"/Users/lorenzopantano/Developer/lowlevel/ctoml/build/tests/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
