@@ -1,2 +1,2 @@
-"
-str" = "I'm a string. \"You can quote me\".Name\tJos\xE9\nLocation\tSF."
+"str" = "I'm a string. \"You can quote me\".Name\tJos\xE9\nLocation\tSF."
+"quot15" = '''Here are fifteen quotation marks: """'''

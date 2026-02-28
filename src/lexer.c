@@ -57,14 +57,14 @@ char lexer_peek(Lexer *l) {
 }
 
 /**
- * @brief Same as lexer_peek but peeks 1 char ahead, without consuming it.
+ * @brief Same as lexer_peek but peeks n chars ahead, without consuming it.
  * 
  * @param l Pointer to the Lexer structure
- * @return The char at position current + 1 if any
+ * @return The char at position current + n if any
  */
-char lexer_peek_2(Lexer *l) {
-    if (l->current + 1 >= l->end) return '\0';
-    else return *(l->current + 1);
+char lexer_peek_n(Lexer *l, int n) {
+    if (l->current + n >= l->end) return '\0';
+    else return *(l->current + n);
 }
 
 /**
@@ -76,6 +76,18 @@ void lexer_skip_whitespace(Lexer *l) {
     while (lexer_peek(l) == ' ' || lexer_peek(l) == '\t') {
         lexer_advance(l);
     }
+}
+
+/**
+ * @brief Advances in the Lexer while characters are whitespaces, incluing newlines
+ * (used in the multiline string \ special character)
+ * 
+ * @param l Pointer to the Lexer structure
+ */
+void lexer_skip_whitespace_and_newlines(Lexer *l) {
+    while (lexer_peek(l) == ' '  || lexer_peek(l) == '\t' ||
+           lexer_peek(l) == '\n' || lexer_peek(l) == '\r')
+        lexer_advance(l);
 }
 
 /**
@@ -160,6 +172,25 @@ Token lexer_emit_token(Lexer *l, TokenKind kind, const char *start) {
 }
 
 /**
+ * @brief Same as lexer_emit_token but let's you specify an end pointer.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param kind Token kind to be emitted
+ * @param start Pointer to start position for the new token
+ * @return Token 
+ * @return Token 
+ */
+Token lexer_emit_token_end(Lexer *l, TokenKind kind, const char *start, const char *end) {
+    return (Token){
+        .kind  = kind,
+        .start = start,
+        .len   = (size_t)(end - start),  // ← custom end, not l->current
+        .line  = l->line,
+        .col   = l->col,
+    };
+}
+
+/**
  * @brief Debug helper to print a Token struct
  * 
  * @param t Token
@@ -197,7 +228,6 @@ Token lexer_scan_brackets(Lexer *l, const char *start, TokenKind singleKind, Tok
  * Reference -> https://toml.io/en/v1.1.0#string
  * 
  * @param l Pointer to the Lexer structure
- * @param start Start pointer
  * @return Token 
  */
 Token lexer_scan_basic_string(Lexer *l) {
@@ -229,6 +259,172 @@ Token lexer_scan_basic_string(Lexer *l) {
     return lexer_emit_token(l, TOK_INVALID, start);
 }
 
+/**
+ * @brief Scan for multiline string tokens
+ * Reference -> https://toml.io/en/v1.1.0#string
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return Token 
+ */
+Token lexer_scan_multiline_string(Lexer *l) {
+    lexer_advance(l);
+    lexer_advance(l);
+    lexer_advance(l);  // Consume """
+
+    // According to v1.1.0 docs, newlines after opening quotes will be trimmed.
+    if (lexer_peek(l) == '\n') {
+        lexer_advance(l);
+    } else if (lexer_peek(l) == '\r' && lexer_peek_n(l, 1) == '\n') {
+        lexer_advance(l); lexer_advance(l);
+    }
+
+    const char *start = l->current;
+
+    while (1) {
+        char ch = lexer_peek(l);
+
+        if (ch == '\0') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+        // From docs: 
+        // For writing long strings without introducing extraneous whitespace, 
+        // use a "line ending backslash". 
+        // When the last non-whitespace character on a line is an unescaped \, 
+        // it will be trimmed along with all whitespace (including newlines) 
+        // up to the next non-whitespace character or closing delimiter.
+        if (ch == '\\') {
+            lexer_advance(l); 
+            char next = lexer_peek(l);
+
+            // If we encounter EOF right after the backslash, it's an error
+            if (next == '\0') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+            if (next == ' ' || next == '\t' || next == '\n' || next == '\r') {
+                lexer_skip_whitespace_and_newlines(l);
+                continue;
+            }
+
+            if (!lexer_skip_escaped(l)) { return lexer_emit_token(l, TOK_INVALID, start); }
+            continue;
+        }
+
+        // Bare \r only valid before \n, if we encounter it alone it's an error
+        if (ch == '\r') {
+            if (lexer_peek_n(l, 1) != '\n') { return lexer_emit_token(l, TOK_INVALID, start); }
+            lexer_advance(l); lexer_advance(l);
+            continue;
+        }
+
+        // End of multiline string
+        if (ch == '"') {
+            // Consider edge case where double quotes are put just before the three closing ones.
+            // max 2
+            int count = 0;
+            const char *quote_start = l->current;
+            while (lexer_peek(l) == '"' && count < 5) {
+                lexer_advance(l);
+                count++;
+            }
+            if (count >= 3)
+                return lexer_emit_token_end(l, TOK_STRING, start, quote_start + (count - 3));
+            continue;
+        }
+
+        // If this character is a control character ( <= 0x1F  or  == 0x7F ), AND 
+        // it is not one of the explicitly allowed ones (\t or \n), 
+        // then it’s invalid
+        if (ch != '\t' && ch != '\n' &&  ((unsigned char)ch <= 0x1F || (unsigned char)ch == 0x7F)) {
+            return lexer_emit_token(l, TOK_INVALID, start);
+        }
+
+        lexer_advance(l);
+    }
+}
+
+/**
+ * @brief Scans for literal string tokens, literal strings are those wrapped in single quotes.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return Token 
+ */
+Token lexer_scan_literal_string(Lexer *l) {
+    lexer_advance(l);
+    const char *start = l->current;
+    while (1) {
+        char ch = lexer_peek(l);
+        if (ch == '\0') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+        // Newlines are not allowed in literal strings
+        if (ch == '\n' || ch == '\r') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+        // Control characters other than tab are not permitted in a literal string.
+        // The unsiged char check inlucdes the \n and \r check above, 
+        // but we check them explictly to give a more specific error message.
+        if (ch != '\t' && ((unsigned char)ch <= 0x1F || (unsigned char)ch == 0x7F)) { return lexer_emit_token(l, TOK_INVALID, start); }
+        
+        // End of literal string
+        if (ch == '\'') break;
+        else lexer_advance(l); 
+    }
+    Token t = lexer_emit_token(l, TOK_STRING, start); 
+    lexer_advance(l);
+    return t;
+}
+
+/**
+ * @brief Scan for multiline literal string tokens, multiline literal strings are those wrapped in triple single quotes.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return Token 
+ */
+Token lexer_scan_multiline_literal_string(Lexer *l) {
+    lexer_advance(l);
+    lexer_advance(l);
+    lexer_advance(l);  // Consume '''
+
+    // Trim immediate first newline
+    if (lexer_peek(l) == '\n') {
+        lexer_advance(l);
+    } else if (lexer_peek(l) == '\r' && lexer_peek_n(l, 1) == '\n') {
+        lexer_advance(l); lexer_advance(l);
+    }
+
+    const char *start = l->current;
+
+    while (1) {
+        char ch = lexer_peek(l);
+
+        // Unterminated
+        if (ch == '\0') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+        // Closing ''' with 4/5 quote edge case (same logic as multiline basic)
+        if (ch == '\'') {
+            int count = 0;
+            const char *quote_start = l->current;
+            while (lexer_peek(l) == '\'' && count < 5) {
+                lexer_advance(l);
+                count++;
+            }
+            if (count >= 3)
+                return lexer_emit_token_end(l, TOK_STRING, start, quote_start + (count - 3));
+            continue;  // 1 or 2 quotes = content, keep going
+        }
+
+        // Bare \r only valid before \n
+        if (ch == '\r') {
+            if (lexer_peek_n(l, 1) != '\n') { return lexer_emit_token(l, TOK_INVALID, start); }
+            lexer_advance(l); lexer_advance(l);
+            continue;
+        }
+
+        // Control characters other than tab are not permitted
+        // \n is allowed raw (multiline), \t is allowed raw (spec)
+        if (ch != '\t' && ch != '\n' && ((unsigned char)ch <= 0x1F || (unsigned char)ch == 0x7F))
+            return lexer_emit_token(l, TOK_INVALID, start);
+
+        lexer_advance(l);
+    }
+}
+
 
 /**
  * @brief Scans the current lexer position (skipping whitespaces) for the next
@@ -245,6 +441,11 @@ Token lexer_next_token(Lexer *l) {
     // Special cases
     if (ch == '\0') { return lexer_emit_token(l, TOK_EOF, start); }
     if (ch == '\n') {  lexer_advance(l); return lexer_emit_token(l, TOK_NEWLINE, start); }
+    if (ch == '\r' && lexer_peek_n(l, 1) == '\n') { 
+        lexer_advance(l); 
+        lexer_advance(l); 
+        return lexer_emit_token(l, TOK_NEWLINE, start);
+    }
 
     // Single char tokens
     if (ch == '=') { lexer_advance(l); return lexer_emit_token(l, TOK_EQUALS, start); }
@@ -258,7 +459,10 @@ Token lexer_next_token(Lexer *l) {
     if (ch == ']') { return lexer_scan_brackets(l, start, TOK_RBRACKET, TOK_DOUBLE_RBRACKET); }
 
     // Strings
+    if (ch == '"' && lexer_peek_n(l, 1) == '"' && lexer_peek_n(l, 2) == '"') { return lexer_scan_multiline_string(l); }
     if (ch == '"') { return lexer_scan_basic_string(l); }
+    if (ch == '\'' && lexer_peek_n(l, 1) == '\'' && lexer_peek_n(l, 2) == '\'') { return lexer_scan_multiline_literal_string(l); }
+    if (ch == '\'') { return lexer_scan_literal_string(l); }
 
     lexer_advance(l);
     return lexer_emit_token(l, TOK_INVALID, start);

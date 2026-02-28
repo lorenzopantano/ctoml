@@ -39,11 +39,11 @@ typedef enum {
  */
 typedef struct {
     TokenKind kind;
-    char     *lit;     // raw literal from source
-    int       line;
-    int       col;
-    const char     *start;
-    size_t    len;
+    char        *lit;     // raw literal from source
+    int         line;
+    int         col;
+    const char  *start;
+    size_t      len;
 } Token;
 
 /**
@@ -87,12 +87,15 @@ static const char *token_kind_name(TokenKind kind) {
 void lexer_init(Lexer *l, const char *src, size_t len);
 void lexer_advance(Lexer *l);
 char lexer_peek(Lexer *l);
-char lexer_peek_2(Lexer *l);
+char lexer_peek_n(Lexer *l, int n);
 void lexer_skip_whitespace(Lexer *l);
 void token_print(Token t);
 Token lexer_emit_token(Lexer *l, TokenKind kind, const char *start);
 Token lexer_next_token(Lexer *l);
 Token lexer_scan_brackets(Lexer *l, const char *start, TokenKind singleKind, TokenKind doubleKind);
 Token lexer_scan_basic_string(Lexer *l);
+Token lexer_scan_multiline_string(Lexer *l);
+Token lexer_scan_multiline_literal_string(Lexer *l);
+Token lexer_scan_literal_string(Lexer *l);
 
 #endif // CTOML_LEXER_H
