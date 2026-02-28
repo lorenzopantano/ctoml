@@ -52,7 +52,7 @@ void lexer_advance(Lexer *l) {
  * @return The current character, or EOF if at end of input
  */
 char lexer_peek(Lexer *l) {
-    if (l->current >= l->end) return EOF;
+    if (l->current >= l->end) return '\0';
     else return *(l->current);
 }
 
@@ -63,7 +63,7 @@ char lexer_peek(Lexer *l) {
  * @return The char at position current + 1 if any
  */
 char lexer_peek_2(Lexer *l) {
-    if (l->current + 1 >= l->end) return EOF;
+    if (l->current + 1 >= l->end) return '\0';
     else return *(l->current + 1);
 }
 
@@ -78,6 +78,66 @@ void lexer_skip_whitespace(Lexer *l) {
     }
 }
 
+/**
+ * @brief Advances in the lexer while characters are unicode escapes. TOML accepts
+ * as valid only Unicode scalars, this excludes Unicode surrogates.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param count How many characters to skip: \xHH, \uHHHH, \UHHHHHHHH
+ * @return int 0 for success, 1 for failure
+ */
+static int lexer_skip_unicode_escape(Lexer *l, int count) {
+    uint32_t codepoint = 0;
+
+    for (int i = 0; i < count; i++) {
+        char ch = lexer_peek(l);
+        if (!isxdigit((unsigned char)ch)) return 0;
+
+        // build the codepoint value as we go
+        codepoint <<= 4;
+        if      (ch >= '0' && ch <= '9') codepoint += ch - '0';
+        else if (ch >= 'a' && ch <= 'f') codepoint += ch - 'a' + 10;
+        else if (ch >= 'A' && ch <= 'F') codepoint += ch - 'A' + 10;
+
+        lexer_advance(l);
+    }
+
+    // Reject Unicode surrogates
+    if (codepoint >= 0xD800 && codepoint <= 0xDFFF) return 0;
+    // Reject values beyond Unicode range (only relevant for \U)
+    if (codepoint > 0x10FFFF) return 0;
+
+    return 1;
+}
+
+
+/**
+ * @brief Consume and validate one escape sequence after the leading backslash.
+ * The backslash itself must already be consumed before calling this.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return int 0 for success, 1 for failure
+ */
+static int lexer_skip_escaped(Lexer *l) {
+    char esc = lexer_peek(l);
+    switch (esc) {
+        case 'b': case 't': case 'n': case 'f':
+        case 'r': case '"': case '\\': case 'e':
+            lexer_advance(l);
+            return 1;
+        case 'x':
+            lexer_advance(l);
+            return lexer_skip_unicode_escape(l, 2);
+        case 'u':
+            lexer_advance(l);
+            return lexer_skip_unicode_escape(l, 4);
+        case 'U':
+            lexer_advance(l);
+            return lexer_skip_unicode_escape(l, 8);
+        default:
+            return 0;
+    }
+}
 
 /// TOKENS
 
@@ -132,6 +192,43 @@ Token lexer_scan_brackets(Lexer *l, const char *start, TokenKind singleKind, Tok
     return lexer_emit_token(l, singleKind, start);
 }
 
+/**
+ * @brief Scan for basic string tokens, basic strings are those wrapped in double quotes.
+ * Reference -> https://toml.io/en/v1.1.0#string
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Start pointer
+ * @return Token 
+ */
+Token lexer_scan_basic_string(Lexer *l) {
+    lexer_advance(l); // Consume starting double quote first
+    const char *start = l->current;
+    while (1) { 
+        char ch = lexer_peek(l);
+
+        // Not allowed chars in basic strings: EOF or newlines, if we encounter them before closing double quote, it's an error
+        if (ch == '\0' || ch == '\n' || ch == '\r') { break; }
+
+        // Escaped chars
+        if (ch == '\\') {
+            lexer_advance(l); // Consume first backslash
+            if (!lexer_skip_escaped(l)) { return lexer_emit_token(l, TOK_INVALID, start); }
+        }
+
+        // If we encounter a closing double quote, emit the string token and consume the closing double quote before returning
+        if (ch == '"') { 
+            // Advance before returning to consume the closing double quote
+            Token t = lexer_emit_token(l, TOK_STRING, start);
+            lexer_advance(l); 
+            return t;
+        }
+        else { lexer_advance(l); }    
+    }
+
+    // TODO: Should throw an error here (EOF or NEWLINE reached before string end double quote)
+    return lexer_emit_token(l, TOK_INVALID, start);
+}
+
 
 /**
  * @brief Scans the current lexer position (skipping whitespaces) for the next
@@ -146,14 +243,8 @@ Token lexer_next_token(Lexer *l) {
     char ch = lexer_peek(l);
     
     // Special cases
-    if (ch == EOF) { return lexer_emit_token(l, TOK_EOF, start); }
+    if (ch == '\0') { return lexer_emit_token(l, TOK_EOF, start); }
     if (ch == '\n') {  lexer_advance(l); return lexer_emit_token(l, TOK_NEWLINE, start); }
-    // Shouldn't be needed because of read file with 'rb' (TODO: double check this)
-    if (ch == '\r' && lexer_peek_2(l) == '\n') { 
-        lexer_advance(l); 
-        lexer_advance(l); 
-        return lexer_emit_token(l, TOK_NEWLINE, start);
-    }
 
     // Single char tokens
     if (ch == '=') { lexer_advance(l); return lexer_emit_token(l, TOK_EQUALS, start); }
@@ -165,6 +256,9 @@ Token lexer_next_token(Lexer *l) {
     // Square brackets tokens
     if (ch == '[') { return lexer_scan_brackets(l, start, TOK_LBRACKET, TOK_DOUBLE_LBRACKET); }
     if (ch == ']') { return lexer_scan_brackets(l, start, TOK_RBRACKET, TOK_DOUBLE_RBRACKET); }
+
+    // Strings
+    if (ch == '"') { return lexer_scan_basic_string(l); }
 
     lexer_advance(l);
     return lexer_emit_token(l, TOK_INVALID, start);

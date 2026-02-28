@@ -1,6 +1,2 @@
-[[test]][
-version = "1.0"
-"user" = 22;
-
-[user]
-"username" = "lorenzo"
+"
+str" = "I'm a string. \"You can quote me\".Name\tJos\xE9\nLocation\tSF."

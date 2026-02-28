@@ -32,6 +32,11 @@ int main(int argc, char **argv) {
     Token t;
     do {
         t = lexer_next_token(l);
+        if (t.kind == TOK_INVALID) { 
+            printf("ERR: INVALID TOKEN at line %d; col: %d", t.line, t.col);
+            free(buf);
+            return EXIT_FAILURE;
+        }
         token_print(t);
         count++;
     } while (t.kind != TOK_EOF);

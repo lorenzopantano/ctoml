@@ -93,5 +93,6 @@ void token_print(Token t);
 Token lexer_emit_token(Lexer *l, TokenKind kind, const char *start);
 Token lexer_next_token(Lexer *l);
 Token lexer_scan_brackets(Lexer *l, const char *start, TokenKind singleKind, TokenKind doubleKind);
+Token lexer_scan_basic_string(Lexer *l);
 
 #endif // CTOML_LEXER_H
