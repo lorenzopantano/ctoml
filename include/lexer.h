@@ -10,10 +10,8 @@
 typedef enum {
     TOK_EOF,
     TOK_NEWLINE,       // \n or \r\n
-    TOK_WHITESPACE,    // space or tab
     TOK_COMMENT,       // # ...
     TOK_BARE_KEY,      // [A-Za-z0-9_-]+
-    TOK_QUOTED_KEY,    // "..." or '...'
     TOK_EQUALS,        // =
     TOK_DOT,           // .
     TOK_COMMA,         // ,
@@ -27,7 +25,10 @@ typedef enum {
     TOK_INTEGER,       // 42, 0xFF, 0o77, 0b1101
     TOK_FLOAT,         // 3.14, 1e10, inf, nan
     TOK_BOOLEAN,       // true | false
-    TOK_DATETIME,      // 1979-05-27T07:32:00Z
+    TOK_OFFSET_DATETIME,   // 1979-05-27T07:32:00Z
+    TOK_LOCAL_DATETIME,    // 1979-05-27T07:32:00
+    TOK_LOCAL_DATE,        // 1979-05-27
+    TOK_LOCAL_TIME,        // 07:32:00
     TOK_INVALID
 } TokenKind;
 
@@ -76,8 +77,11 @@ static const char *token_kind_name(TokenKind kind) {
         case TOK_INTEGER:          return "INTEGER";
         case TOK_FLOAT:            return "FLOAT";
         case TOK_BOOLEAN:          return "BOOLEAN";
-        case TOK_DATETIME:         return "DATETIME";
         case TOK_COMMENT:          return "COMMENT";
+        case TOK_LOCAL_DATE:       return "LOCAL_DATE";
+        case TOK_LOCAL_DATETIME:   return "LOCAL_DATETIME";
+        case TOK_OFFSET_DATETIME:  return "OFFSET_DATETIME";
+        case TOK_LOCAL_TIME:       return "LOCAL_TIME";
         case TOK_INVALID:          return "INVALID";
         default:                   return "UNKNOWN";
     }

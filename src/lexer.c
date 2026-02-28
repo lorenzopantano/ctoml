@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <string.h>
 #include "lexer.h"
 
 /**
@@ -40,6 +41,18 @@ void lexer_advance(Lexer *l) {
     else { l->col++; }
     // Either case, advance current pointer
     l->current++;
+}
+
+/**
+ * @brief Advances the lexer n characters, updating line and column tracking accordingly.
+ * 
+ * @param l Pointer to the Lexer structure to advance
+ * @param n Number of characters to advance
+ */
+void lexer_advance_n(Lexer *l, int n) {
+    for (int i = 0; i < n; i++) {
+        lexer_advance(l);
+    }
 }
 
 /**
@@ -149,6 +162,41 @@ static int lexer_skip_escaped(Lexer *l) {
         default:
             return 0;
     }
+}
+
+/**
+ * @brief Check if current lexer position buffer matches exactly 
+ * the expected buffer, given the lenght
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param expected The expected buffer to match against
+ * @param len Size of the expected buffer
+ * @return int 
+ */
+static int lexer_match(Lexer *l, const char *expected, size_t len) {
+    if (l->current + len > l->end) return 0;
+    return strncmp(l->current, expected, len) == 0;
+}
+
+
+/**
+ * @brief Checks if the given character is a valid bare key character (alphanumeric, - or _)
+ * 
+ * @param ch The character to check
+ * @return int 1 if the character is a valid bare key character, 0 otherwise
+ */
+static int is_bare_key_char(char ch) {
+    return isalnum((unsigned char)ch) || ch == '-' || ch == '_';
+}
+
+/**
+ * @brief Checks if the given character is a valid number character (digit, - or _)
+ * 
+ * @param ch The character to check
+ * @return int 1 if the character is a valid number character, 0 otherwise
+ */
+static int is_number_char(char ch) {
+    return isdigit((unsigned char)ch) || ch == '-' || ch == '_';
 }
 
 /// TOKENS
@@ -425,6 +473,75 @@ Token lexer_scan_multiline_literal_string(Lexer *l) {
     }
 }
 
+/**
+ * @brief Scan for bare keys. Bare keys are only composed by ascii characters a-Z,A-Z,0-9,_,-
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return Token 
+ */
+Token lexer_scan_bare_key(Lexer *l) {
+    const char *start = l->current;
+    while (1) {
+        char ch = lexer_peek(l);
+        if (is_bare_key_char(ch)) { lexer_advance(l); continue; }
+        else break;
+    }
+    return lexer_emit_token(l, TOK_BARE_KEY, start);
+}
+
+/**
+ * @brief Scan for comment tokens, comments start with # and go until the end of the line (newline or EOF)
+ * Control characters other than tab are not allowed in comments
+ * 
+ * @param l 
+ * @return Token 
+ */
+Token lexer_scan_comment(Lexer *l) {
+        const char *start = l->current;
+        while (1) {
+            char ch = lexer_peek(l);
+            if (ch == '\0' || ch == '\n' || ch == '\r') break;
+            else if (ch != '\t' && ((unsigned char)ch <= 0x1F || (unsigned char)ch == 0x7F)) { return lexer_emit_token(l, TOK_INVALID, start); }
+            else lexer_advance(l);
+        }
+    return lexer_emit_token(l, TOK_COMMENT, start);
+}
+
+/**
+ * @brief Scan for number tokens, including integers, floats, inf and nan.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return Token 
+ */
+Token lexer_scan_number(Lexer *l) {
+    const char *start = l->current;
+    int has_minus = 0;
+
+    // Optional leading sign
+    if (lexer_peek(l) == '+') { lexer_advance(l); }
+    if (lexer_peek(l) == '-') { has_minus = 1; lexer_advance(l); }
+
+    // Check for inf and nan first, since they can start with a digit or a sign
+    if (lexer_match(l, "inf", 3) && !is_bare_key_char(*(l->current + 3))) {
+        lexer_advance_n(l, 3);
+        return lexer_emit_token(l, TOK_FLOAT, start);
+    }
+    if (lexer_match(l, "nan", 3) && !is_bare_key_char(*(l->current + 3))) {
+        lexer_advance_n(l, 3);
+        return lexer_emit_token(l, TOK_FLOAT, start);
+    }
+
+    // Integers
+    char ch = lexer_peek(l);
+    // Leading zeros not allowed
+    if (ch == '0' && is_number_char(lexer_peek_n(l, 1))) {  return lexer_emit_token(l, TOK_INVALID, start); }
+
+    while (is_number_char(ch)) { 
+        lexer_advance(l); 
+        ch = lexer_peek(l);
+    }
+    return lexer_emit_token(l, TOK_INTEGER, start);
+}
 
 /**
  * @brief Scans the current lexer position (skipping whitespaces) for the next
@@ -453,6 +570,7 @@ Token lexer_next_token(Lexer *l) {
     if (ch == ',') { lexer_advance(l); return lexer_emit_token(l, TOK_COMMA, start); }
     if (ch == '{') { lexer_advance(l); return lexer_emit_token(l, TOK_LBRACE, start); }
     if (ch == '}') { lexer_advance(l); return lexer_emit_token(l, TOK_RBRACE, start); }
+    if (ch == '#') { return lexer_scan_comment(l); }
 
     // Square brackets tokens
     if (ch == '[') { return lexer_scan_brackets(l, start, TOK_LBRACKET, TOK_DOUBLE_LBRACKET); }
@@ -463,6 +581,30 @@ Token lexer_next_token(Lexer *l) {
     if (ch == '"') { return lexer_scan_basic_string(l); }
     if (ch == '\'' && lexer_peek_n(l, 1) == '\'' && lexer_peek_n(l, 2) == '\'') { return lexer_scan_multiline_literal_string(l); }
     if (ch == '\'') { return lexer_scan_literal_string(l); }
+
+    // Booleans
+    if (lexer_match(l, "true", 4) && !is_bare_key_char(*(l->current + 4))) {
+        lexer_advance_n(l, 4);
+        return lexer_emit_token(l, TOK_BOOLEAN, start);
+    }
+    if (lexer_match(l, "false", 5) && !is_bare_key_char(*(l->current + 5))) {
+        lexer_advance_n(l, 5);
+        return lexer_emit_token(l, TOK_BOOLEAN, start);
+    }
+
+    // Numbers (integers, floats, inf, nan) // TODO: Add dates here
+    if (lexer_match(l, "inf", 3) && !is_bare_key_char(*(l->current + 3))) {
+        lexer_advance_n(l, 3);
+        return lexer_emit_token(l, TOK_FLOAT, start);
+    }
+    if (lexer_match(l, "nan", 3) && !is_bare_key_char(*(l->current + 3))) {
+        lexer_advance_n(l, 3);
+        return lexer_emit_token(l, TOK_FLOAT, start);
+    }
+    if (isdigit((unsigned char)ch) || ch == '-' || ch == '+') { return lexer_scan_number(l); }
+
+    // Bare keys
+    if (is_bare_key_char(ch)) { return lexer_scan_bare_key(l); }
 
     lexer_advance(l);
     return lexer_emit_token(l, TOK_INVALID, start);
