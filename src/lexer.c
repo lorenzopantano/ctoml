@@ -228,6 +228,21 @@ static int is_valid_binary(char ch) {
     return ch == '1' || ch == '0';
 }
 
+/**
+ * @brief Consume exactly N digits, return false if any are missing
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param n Number of digits to consume
+ * @return int 1 true, 0 false
+ */
+static int lexer_scan_digits_n(Lexer *l, int n) {
+    for (int i = 0; i < n; i++) {
+        if (!isdigit((unsigned char)lexer_peek(l))) return 0;
+        lexer_advance(l);
+    }
+    return 1;
+}
+
 /// TOKENS
 
 /**
@@ -668,6 +683,116 @@ Token lexer_scan_fractional(Lexer *l, const char *start) {
 }
 
 /**
+ * @brief Scans: HH:MM[:SS[.fractional]], Called with cursor at HH
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return int 
+ */
+int lexer_scan_time_part(Lexer *l) {
+    // HH
+    if (!lexer_scan_digits_n(l, 2)) return 0;
+    // :MM
+    if (lexer_peek(l) != ':') return 0;
+    lexer_advance(l);
+    if (!lexer_scan_digits_n(l, 2)) return 0;
+
+    // :SS — optional
+    if (lexer_peek(l) == ':' &&
+        isdigit((unsigned char)lexer_peek_n(l, 1)) &&
+        isdigit((unsigned char)lexer_peek_n(l, 2))) {
+        lexer_advance(l); // ':'
+        if (!lexer_scan_digits_n(l, 2)) return 0;
+
+        // .fractional — optional
+        if (lexer_peek(l) == '.') {
+            lexer_advance(l);
+            if (!isdigit((unsigned char)lexer_peek(l))) return 0;
+            while (isdigit((unsigned char)lexer_peek(l))) lexer_advance(l);
+        }
+    }
+
+    return 1;
+}
+
+/**
+ * @brief Scans for offset part of time (Z | +HH:MM | -HH:MM)
+ * 
+ * @param l Pointer to the Lexer structure
+ * @return int 1 if offset is valid, 0 otherwise
+ */
+int lexer_scan_offset(Lexer *l) {
+    char ch = lexer_peek(l);
+    if (ch == 'Z' || ch == 'z') {
+        lexer_advance(l);
+        return 1;
+    }
+    if (ch == '+' || ch == '-') {
+        lexer_advance(l);
+        if (!lexer_scan_digits_n(l, 2)) return 0;
+        if (lexer_peek(l) != ':') return 0;
+        lexer_advance(l);
+        if (!lexer_scan_digits_n(l, 2)) return 0;
+        return 1;
+    }
+    return 0; // no offset present — not an error, caller decides
+}
+
+/**
+ * @brief Scans for local time HH:MM:SS (:SS optional)
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start position
+ * @return Token 
+ */
+Token lexer_scan_local_time(Lexer *l, const char *start) {
+    if (!lexer_scan_time_part(l)) return lexer_emit_token(l, TOK_INVALID, start);
+    return lexer_emit_token(l, TOK_LOCAL_TIME, start);
+}
+
+
+/**
+ * @brief Scans: YYYY-MM-DD[T| ][HH:MM[:SS[.frac]][Z|+HH:MM|-HH:MM]]
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start position
+ * @return Token 
+ */
+Token lexer_scan_datetime(Lexer *l, const char *start) {
+    // YYYY
+    if (!lexer_scan_digits_n(l, 4)) { return lexer_emit_token(l, TOK_INVALID, start); }
+    
+    // -MM
+    if (lexer_peek(l) != '-') { return lexer_emit_token(l, TOK_INVALID, start); }
+    lexer_advance(l);
+    if (!lexer_scan_digits_n(l, 2)) { return lexer_emit_token(l, TOK_INVALID, start); }
+    
+    // -DD
+    if (lexer_peek(l) != '-') { return lexer_emit_token(l, TOK_INVALID, start); }
+    lexer_advance(l);
+    if (!lexer_scan_digits_n(l, 2)){ return lexer_emit_token(l, TOK_INVALID, start); }
+
+    // Local date — no time component follows
+    char ch = lexer_peek(l);
+    if (ch != 'T' && ch != 't' && ch != ' ') { return lexer_emit_token(l, TOK_LOCAL_DATE, start); }
+
+    // Space delimiter: only valid if followed by a digit (time component)
+    // Prevents consuming spaces between unrelated tokens
+    if (ch == ' ' && !isdigit((unsigned char)lexer_peek_n(l, 1))) { return lexer_emit_token(l, TOK_LOCAL_DATE, start); }
+
+    lexer_advance(l); // Consume T or space
+    if (!lexer_scan_time_part(l)) return lexer_emit_token(l, TOK_INVALID, start);
+
+    // Check for offset
+    ch = lexer_peek(l);
+    if (ch == 'Z' || ch == 'z' || ch == '+' || ch == '-') {
+        if (!lexer_scan_offset(l)) return lexer_emit_token(l, TOK_INVALID, start);
+        return lexer_emit_token(l, TOK_OFFSET_DATETIME, start);
+    }
+
+    return lexer_emit_token(l, TOK_LOCAL_DATETIME, start);
+}
+
+/**
  * @brief Scan for number tokens, including integers , floats, inf and nan.
  * 
  * @param l Pointer to the Lexer structure
@@ -675,6 +800,26 @@ Token lexer_scan_fractional(Lexer *l, const char *start) {
  */
 Token lexer_scan_number(Lexer *l) {
     const char *start = l->current;
+
+    // Date and Times
+    // Detect YYYY- date pattern
+    if (isdigit((unsigned char)lexer_peek(l)) &&
+        isdigit((unsigned char)lexer_peek_n(l, 1)) &&
+        isdigit((unsigned char)lexer_peek_n(l, 2)) &&
+        isdigit((unsigned char)lexer_peek_n(l, 3)) &&
+        lexer_peek_n(l, 4) == '-') {
+        return lexer_scan_datetime(l, start);
+    }
+
+    // Detect HH:MM local time pattern
+    if (isdigit((unsigned char)lexer_peek(l)) &&
+        isdigit((unsigned char)lexer_peek_n(l, 1)) &&
+        lexer_peek_n(l, 2) == ':' &&
+        isdigit((unsigned char)lexer_peek_n(l, 3)) &&
+        isdigit((unsigned char)lexer_peek_n(l, 4))) {
+        return lexer_scan_local_time(l, start);
+    }
+
     int has_minus = 0;
     int has_plus = 0;
 
@@ -697,9 +842,13 @@ Token lexer_scan_number(Lexer *l) {
     if (!isdigit((unsigned char)ch)) { return lexer_emit_token(l, TOK_INVALID, start); }
     char next = lexer_peek_n(l, 1);
 
+
     // Hex, oct, bin integers
     if (ch == '0') {
-        if (isdigit((unsigned char)next)) { return lexer_emit_token(l, TOK_INVALID, start); } // No leading zeros allowed for decimal integers
+        if (isdigit((unsigned char)next)) { 
+            // No leading zeros allowed for decimal integers
+            return lexer_emit_token(l, TOK_INVALID, start);
+        }
         if ((has_plus || has_minus) && is_hex_bin_oct_char((unsigned char)next)) { return lexer_emit_token(l, TOK_INVALID, start); } // No sign allowed for non-decimal integers
         if (next == 'x') { return lexer_scan_hex(l, start); }
         if (next == 'b') { return lexer_scan_binary(l, start); }
@@ -708,11 +857,12 @@ Token lexer_scan_number(Lexer *l) {
 
     // Full integer or decimal part of float
     lexer_scan_decimal(l);
+    ch = lexer_peek(l);
 
     // Floats
-    ch = lexer_peek(l);
     if (ch == '.') { return lexer_scan_fractional(l, start); }
     if (ch == 'e' || ch == 'E') { return lexer_scan_exponent(l, start); }
+
     // Validate boundary: letter or "_" right after digits is invalid
     if (isalpha((unsigned char)ch) || ch == '_') { return lexer_emit_token(l, TOK_INVALID, start); }
 
@@ -768,7 +918,8 @@ Token lexer_next_token(Lexer *l) {
         return lexer_emit_token(l, TOK_BOOLEAN, start);
     }
 
-    // Numbers (integers, floats, inf, nan) // TODO: Add dates here
+    // Numbers (integers, floats, inf, nan)
+    // inf and nan (without leading sign + or -) must be checked here or will be tokenized as bare keys
     if (lexer_match(l, "inf", 3) && !is_bare_key_char(*(l->current + 3))) {
         lexer_advance_n(l, 3);
         return lexer_emit_token(l, TOK_FLOAT, start);
