@@ -190,13 +190,42 @@ static int is_bare_key_char(char ch) {
 }
 
 /**
- * @brief Checks if the given character is a valid number character (digit, - or _)
+ * @brief Checks if the given character is a valid number character
+ * for integers (digit, - or _)
  * 
  * @param ch The character to check
  * @return int 1 if the character is a valid number character, 0 otherwise
  */
-static int is_number_char(char ch) {
+static int is_integer_char(char ch) {
     return isdigit((unsigned char)ch) || ch == '-' || ch == '_';
+}
+
+/**
+ * @brief Checks if the given character is a valid number character
+ * for hex, binary, or oct representations (x, b, o)
+ * 
+ * @param ch The character to check
+ * @return int 1 if the character is a valid number character, 0 otherwise
+ */
+static int is_hex_bin_oct_char(char ch) {
+    return ch == 'x' || ch == 'b' || ch == 'o';
+}
+
+/**
+ * @brief Checks if the given character is a valid characters for numbers
+ * including integers, floats, hex, oct, bin (digit, - or _, +, ., e, E, x, b, o)
+ * 
+ * @param ch The character to check
+ * @return int 
+ */
+static int is_valid_number_char(char ch) {
+    return 
+        is_integer_char(ch) || ch == '+' || ch == '.' || ch == 'e' || ch == 'E' || 
+        isxdigit((unsigned char)ch) || is_hex_bin_oct_char(ch);
+}
+
+static int is_valid_binary(char ch) {
+    return ch == '1' || ch == '0';
 }
 
 /// TOKENS
@@ -508,7 +537,138 @@ Token lexer_scan_comment(Lexer *l) {
 }
 
 /**
- * @brief Scan for number tokens, including integers, floats, inf and nan.
+ * @brief Scans for hexadecimal integer tokens, which start with 0x followed by hexadecimal digits and underscores.
+ * Underscores are allowed between digits (but not between the prefix and the value).
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start of the token (position of '0' in '0x')
+ * @return Token 
+ */
+Token lexer_scan_hex(Lexer *l, const char *start) {
+    lexer_advance(l); // Consume '0'
+    lexer_advance(l); // Consume 'x'
+
+    char ch = lexer_peek(l);
+    if (!isxdigit((unsigned char)ch)) { return lexer_emit_token(l, TOK_INVALID, start); }
+
+    // Cannot have underscores right after the prefix, but can have them between digits
+    // The check is done before starting the loop, so we know for sure that the first char after 0x is a valid hex digit
+    // (lexer_peek(l) == '_' && isxdigit((unsigned char)lexer_peek_n(l, 1))) checks for an underscore followed by a valid hex digit
+    // every other case will not pass the condition and break the loop, including a trailing underscore (invalid)
+    while (isxdigit((unsigned char)ch) || (ch == '_' && isxdigit((unsigned char)lexer_peek_n(l, 1)))) {
+        lexer_advance(l);
+        ch = lexer_peek(l);
+    }
+    return lexer_emit_token(l, TOK_INTEGER, start);
+}
+
+/**
+ * @brief Scans for binary represented integers
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start of the token (position of '0' in '0b')
+ * @return Token 
+ */
+Token lexer_scan_binary(Lexer *l, const char *start) {
+    lexer_advance(l); // Consume '0'
+    lexer_advance(l); // Consume 'b'
+
+    char ch = lexer_peek(l);
+    if (!is_valid_binary(ch)) { return lexer_emit_token(l, TOK_INVALID, start); }
+    while (is_valid_binary(ch) || (ch == '_' && is_valid_binary(lexer_peek_n(l, 1)))) {
+        lexer_advance(l);
+        ch = lexer_peek(l);
+    }
+    return lexer_emit_token(l, TOK_INTEGER, start);
+}
+
+/**
+ * @brief Scans for octal represented integers
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start of the token (position of '0' in '0o')
+ * @return Token 
+ */
+Token lexer_scan_octal(Lexer *l, const char *start) {
+    lexer_advance(l); // Consume '0'
+    lexer_advance(l); // Consume 'o'
+
+    char ch = lexer_peek(l);
+    if (ch < '0' || ch > '7') { return lexer_emit_token(l, TOK_INVALID, start); }
+    while ((ch >= '0' && ch <= '7') || (ch == '_' && (lexer_peek_n(l, 1) >= '0' && lexer_peek_n(l, 1) <= '7'))) {
+        lexer_advance(l);
+        ch = lexer_peek(l);
+    }
+    return lexer_emit_token(l, TOK_INTEGER, start);
+}
+
+/**
+ * @brief Advances in the Lexer while characters are valid for decimal integers of floats
+ * 
+ * @param l Pointer to the Lexer structure
+ */
+void lexer_scan_decimal(Lexer *l) {
+    while (1) {
+        if (isdigit((unsigned char)lexer_peek(l))) { lexer_advance(l); continue; }
+        if (lexer_peek(l) == '_' && isdigit((unsigned char)lexer_peek_n(l, 1))) { lexer_advance(l); continue; }
+        break;
+    }
+}
+
+/**
+ * @brief Scans for the exponent part of a float, which starts with 'e' or 'E' 
+ * followed by an optional sign and then decimal digits.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start of the token
+ * @return Token 
+ */
+Token lexer_scan_exponent(Lexer *l, const char *start) {
+    lexer_advance(l); // Consume 'e' or 'E'
+    char ch = lexer_peek(l);
+    if (ch == '+' || ch == '-') { lexer_advance(l); }
+
+    ch = lexer_peek(l);
+    // Must have at least one digit — exponent allows leading zeros per spec
+    if (!isdigit((unsigned char)ch)) { return lexer_emit_token(l, TOK_INVALID, start); }
+    lexer_scan_decimal(l);
+    
+    // Validate boundary: letter or "_" right after digits is invalid
+    ch = lexer_peek(l);
+    if (isalpha((unsigned char)ch) || ch == '_') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+    return lexer_emit_token(l, TOK_FLOAT, start);
+}
+
+/**
+ * @brief Scans for the fractional part of a float, which starts with a '.' followed by decimal digits.
+ * 
+ * @param l Pointer to the Lexer structure
+ * @param start Pointer to the start of the token
+ * @return Token 
+ */
+Token lexer_scan_fractional(Lexer *l, const char *start) {
+    // TODO: Handle case where dot before digits eg: .7 (invlid per spec) -> maybe to do in the parser?
+    lexer_advance(l); // Consume '.'
+    char ch = lexer_peek(l);
+    
+    // Must be a digit after '.'
+    if (!isdigit((unsigned char)ch)) { return lexer_emit_token(l, TOK_INVALID, start); }
+    lexer_scan_decimal(l);
+    
+    // Validate boundary: letter or "_" right after digits is invalid
+    ch = lexer_peek(l);
+
+    // Optional exponent part after fractional part
+    if (ch == 'e' || ch == 'E') { return lexer_scan_exponent(l, start); }
+    // If not exponent, validate boundary for float token
+    if (isalpha((unsigned char)ch) || ch == '_') { return lexer_emit_token(l, TOK_INVALID, start); }
+
+    return lexer_emit_token(l, TOK_FLOAT, start);
+}
+
+/**
+ * @brief Scan for number tokens, including integers , floats, inf and nan.
  * 
  * @param l Pointer to the Lexer structure
  * @return Token 
@@ -516,10 +676,11 @@ Token lexer_scan_comment(Lexer *l) {
 Token lexer_scan_number(Lexer *l) {
     const char *start = l->current;
     int has_minus = 0;
+    int has_plus = 0;
 
     // Optional leading sign
-    if (lexer_peek(l) == '+') { lexer_advance(l); }
-    if (lexer_peek(l) == '-') { has_minus = 1; lexer_advance(l); }
+    if (lexer_peek(l) == '+') { has_plus = 1; lexer_advance(l); }
+    else if (lexer_peek(l) == '-') { has_minus = 1; lexer_advance(l); }
 
     // Check for inf and nan first, since they can start with a digit or a sign
     if (lexer_match(l, "inf", 3) && !is_bare_key_char(*(l->current + 3))) {
@@ -531,15 +692,30 @@ Token lexer_scan_number(Lexer *l) {
         return lexer_emit_token(l, TOK_FLOAT, start);
     }
 
-    // Integers
     char ch = lexer_peek(l);
-    // Leading zeros not allowed
-    if (ch == '0' && is_number_char(lexer_peek_n(l, 1))) {  return lexer_emit_token(l, TOK_INVALID, start); }
+    // Must start with a digit after optional sign
+    if (!isdigit((unsigned char)ch)) { return lexer_emit_token(l, TOK_INVALID, start); }
+    char next = lexer_peek_n(l, 1);
 
-    while (is_number_char(ch)) { 
-        lexer_advance(l); 
-        ch = lexer_peek(l);
+    // Hex, oct, bin integers
+    if (ch == '0') {
+        if (isdigit((unsigned char)next)) { return lexer_emit_token(l, TOK_INVALID, start); } // No leading zeros allowed for decimal integers
+        if ((has_plus || has_minus) && is_hex_bin_oct_char((unsigned char)next)) { return lexer_emit_token(l, TOK_INVALID, start); } // No sign allowed for non-decimal integers
+        if (next == 'x') { return lexer_scan_hex(l, start); }
+        if (next == 'b') { return lexer_scan_binary(l, start); }
+        if (next == 'o') { return lexer_scan_octal(l, start); }
     }
+
+    // Full integer or decimal part of float
+    lexer_scan_decimal(l);
+
+    // Floats
+    ch = lexer_peek(l);
+    if (ch == '.') { return lexer_scan_fractional(l, start); }
+    if (ch == 'e' || ch == 'E') { return lexer_scan_exponent(l, start); }
+    // Validate boundary: letter or "_" right after digits is invalid
+    if (isalpha((unsigned char)ch) || ch == '_') { return lexer_emit_token(l, TOK_INVALID, start); }
+
     return lexer_emit_token(l, TOK_INTEGER, start);
 }
 
