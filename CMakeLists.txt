@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.23)
 project(ctoml)
 
-add_library(ctoml src/file.c src/lexer.c)
+add_library(ctoml src/file.c src/lexer.c src/stream.c src/parser.c)
 target_include_directories(ctoml PUBLIC include)
 
 # AddressSanitizer for Debug builds (macOS/Clang)

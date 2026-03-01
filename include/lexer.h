@@ -29,7 +29,8 @@ typedef enum {
     TOK_LOCAL_DATETIME,    // 1979-05-27T07:32:00
     TOK_LOCAL_DATE,        // 1979-05-27
     TOK_LOCAL_TIME,        // 07:32:00
-    TOK_INVALID
+    TOK_INVALID,        // Invalid tokens
+    TOK_ERROR           // Invalid/Error tokens (only from parser)
 } TokenKind;
 
 /**

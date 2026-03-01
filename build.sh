@@ -28,6 +28,7 @@ echo "📁 Test binary: $(pwd)/tests/test_ctoml"
 
 # Run test manually with ASan leak detection
 # echo "🔍 Running with ASan leak check..."
+# Not supported on macOS due to missing leak detection in ASan, but on Linux you can uncomment this line to check for leaks:
 # ASAN_OPTIONS=detect_leaks=1 ./tests/test_ctoml
 
 cd ..
