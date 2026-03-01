@@ -23,7 +23,12 @@ int main(int argc, char **argv) {
     }
 
 
-    Lexer *l;
+    Lexer *l = malloc(sizeof(Lexer));
+    if (l == NULL) {
+        fprintf(stderr, "Failed to allocate memory for lexer\n");
+        free(buf);
+        return EXIT_FAILURE;
+    }
     lexer_init(l, buf, size);
 
     printf("Lexer src:\n%s\n\n", l->src);
@@ -42,5 +47,6 @@ int main(int argc, char **argv) {
     } while (t.kind != TOK_EOF);
 
     free(buf);
+    free(l);
     return 0;
 }

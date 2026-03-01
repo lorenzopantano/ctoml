@@ -26,7 +26,8 @@ ctest -V -j$(nproc) --output-on-failure # Verbose, parallel
 echo "✅ Build & tests PASSED!"
 echo "📁 Test binary: $(pwd)/tests/test_ctoml"
 
-# Optional: Run manually too
-./tests/test_ctoml
+# Run test manually with ASan leak detection
+# echo "🔍 Running with ASan leak check..."
+# ASAN_OPTIONS=detect_leaks=1 ./tests/test_ctoml
 
 cd ..
