@@ -2,8 +2,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
 
+/**
+ * @brief Checks for filename extension, must be ".toml"
+ * 
+ * @param filename Path to the filename
+ * @return int 0 if ext is .toml
+ */
+int check_toml_file(const char *filename) {
+    const char* dot = strrchr(filename, '.');  // Last '.' in path
+    if (!dot) return EXIT_FAILURE;
+    return strcmp(dot, ".toml");
+}
+
+/**
+ * @brief Reads content of a file into a buffer. The caller is responsible for freeing the buffer.
+ * The file is read in binary mode to avoid issues with line endings on different platforms. The buffer is null-terminated.
+ * 
+ * @param filename The path to the file to read.
+ * @param out_buf Pointer to a char* that will be set to point to the allocated buffer containing the file contents.
+ * @param out_size Pointer to a size_t that will be set to the size of the file contents (excluding null terminator).
+ * @return 0=success, 1=error (check errno for details)
+ */
 int read_file(const char* filename, char** out_buf, size_t* out_size) {
+
+    if (check_toml_file(filename) != 0) {
+        fprintf(stderr, "File: %s is not a .toml file.\n", filename);
+        return EXIT_FAILURE;
+    }
+
     // Open the file in binary mode to avoid issues with line endings on different platforms:
     // OS messes with line endings (\r\n or \n) and this can cause issues when parsing the file
     // so we want to read the file as binary and handle line endings ourselves.
@@ -32,5 +60,5 @@ int read_file(const char* filename, char** out_buf, size_t* out_size) {
     
     *out_buf = buf;
     *out_size = sz;
-    return 0;
+    return EXIT_SUCCESS;
 }
