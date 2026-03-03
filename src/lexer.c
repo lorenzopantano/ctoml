@@ -20,6 +20,8 @@ void lexer_init(Lexer *l, const char *src, size_t len) {
     l->end = src + len;
     l->line = 1;
     l->col = 1;
+    l->had_error = 0;
+    l->err = malloc(sizeof(TomlError));
 }
 
 /**
@@ -178,7 +180,6 @@ static int lexer_match(Lexer *l, const char *expected, size_t len) {
     return strncmp(l->current, expected, len) == 0;
 }
 
-
 /**
  * @brief Checks if the given character is a valid bare key character (alphanumeric, - or _)
  * 
@@ -283,6 +284,36 @@ Token lexer_emit_token_end(Lexer *l, TokenKind kind, const char *start, const ch
 }
 
 /**
+ * @brief Emits a new invalid token, specifying an error message
+ * 
+ * @param l Pointer to the Lexer
+ * @param code 
+ * @param msg 
+ * @param start 
+ * @return Token 
+ */
+Token lexer_emit_error(Lexer *l, TomlErrorCode code,char *msg, const char *start) {
+    Token invalid = lexer_emit_token(l, TOK_INVALID, start);
+    // Prevent overwriting the error, first one wins
+    if (l->had_error) { return invalid; }
+
+    l->had_error = 1;
+    l->err->code = code;
+    l->err->col = invalid.col;
+    l->err->line = invalid.line;
+    l->err->source = TOML_ERR_SOURCE_LEXER;
+    l->err->msg = msg;
+
+    // Copy the literal into err.context, do not point to it otherwise if
+    // buf (file) is freed before the error it will point to an invalid address
+    size_t copy_len = invalid.len < 63 ? invalid.len : 63;
+    memcpy(l->err->context, invalid.start, copy_len);  // ← start not lit
+    l->err->context[copy_len] = '\0';
+
+    return invalid;
+}
+
+/**
  * @brief Debug helper to print a Token struct
  * 
  * @param t Token
@@ -334,7 +365,9 @@ Token lexer_scan_basic_string(Lexer *l) {
         // Escaped chars
         if (ch == '\\') {
             lexer_advance(l); // Consume first backslash
-            if (!lexer_skip_escaped(l)) { return lexer_emit_token(l, TOK_INVALID, start); }
+            if (!lexer_skip_escaped(l)) {
+                return lexer_emit_error(l, TOML_ERR_INVALID_ESCAPE, "Invalid escape character found.", start);
+            }
         }
 
         // If we encounter a closing double quote, emit the string token and consume the closing double quote before returning
@@ -545,7 +578,9 @@ Token lexer_scan_comment(Lexer *l) {
         while (1) {
             char ch = lexer_peek(l);
             if (ch == '\0' || ch == '\n' || ch == '\r') break;
-            else if (ch != '\t' && ((unsigned char)ch <= 0x1F || (unsigned char)ch == 0x7F)) { return lexer_emit_token(l, TOK_INVALID, start); }
+            else if (ch != '\t' && ((unsigned char)ch <= 0x1F || (unsigned char)ch == 0x7F)) { 
+                return lexer_emit_token(l, TOK_INVALID, start); 
+            }
             else lexer_advance(l);
         }
     return lexer_emit_token(l, TOK_COMMENT, start);

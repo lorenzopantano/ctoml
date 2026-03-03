@@ -2,6 +2,7 @@
 #define CTOML_LEXER_H
 
 #include <stdlib.h>
+#include "error.h"
 
 /**
  * @brief Defines possible token kinds emitted 
@@ -58,6 +59,8 @@ typedef struct {
     const char *end;      // src + file_size
     int         line;
     int         col;
+    TomlError  *err;
+    int         had_error; // Prevents error overwrites
 } Lexer;
 
 static const char *token_kind_name(TokenKind kind) {
@@ -95,6 +98,7 @@ char lexer_peek(Lexer *l);
 char lexer_peek_n(Lexer *l, int n);
 void lexer_skip_whitespace(Lexer *l);
 void token_print(Token t);
+Token lexer_emit_error(Lexer *l, TomlErrorCode code,char *msg, const char *start);
 Token lexer_emit_token(Lexer *l, TokenKind kind, const char *start);
 Token lexer_next_token(Lexer *l);
 Token lexer_scan_brackets(Lexer *l, const char *start, TokenKind singleKind, TokenKind doubleKind);

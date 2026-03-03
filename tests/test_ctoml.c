@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <lexer.h>
 #include <stream.h>
+#include <parser.h>
 
 // TODO: USE THIS: https://github.com/toml-lang/toml-test
 
@@ -14,7 +15,7 @@ int main(int argc, char **argv) {
     //     fprintf(stderr, "Usage: %s <path_to_toml_file>\n", argv[0]);
     //     return EXIT_FAILURE;
     // }
-    const char *filename = "../../res/dates.toml";
+    const char *filename = "../../res/invalid.toml";
     char *buf;
     size_t size;
     int result = read_file(filename, &buf, &size);
@@ -34,24 +35,20 @@ int main(int argc, char **argv) {
     printf("Lexer src:\n%s\n\n", l->src);
 
     TokenStream *s = stream_init();
+    TomlError *err;
 
     int count = 0;
     Token t;
     do {
         t = lexer_next_token(l);
-        if (t.kind == TOK_INVALID) { 
-            printf("ERR: INVALID TOKEN at line %d; col: %d", t.line, t.col);
-            free(buf);
-            free(l);
-            return EXIT_FAILURE;
-        }
         stream_push(s, t);
         count++;
     } while (t.kind != TOK_EOF);
 
-    stream_print(s);
+    parse_toml(s, l);
 
     free(buf);
     free(l);
+    free(s);
     return 0;
 }
